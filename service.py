@@ -7,7 +7,7 @@ import os
 model_lisence_plates = YOLO('models/yolo_lisence_plate.pt')
 model_vehicle = YOLO('models/yolov8m.pt')
 vehicles = [2, 3, 5, 7]
-reader = easyocr.Reader(["en"])
+reader = easyocr.Reader(["en"], gpu=True)
 
 HOME = os.getcwd()  # Getting the current working directory
 
@@ -29,68 +29,101 @@ def draw_border(img, top_left, bottom_right, color=(0, 255, 0), thickness=10, li
 
     return img
 
-# Path to the images folder
-category = "images"
-images_folder = f"{HOME}/{category}"
-target_classes = [1]
 
-for file_name in os.listdir(images_folder):
+def check_image(file_name, images_folder):
     if file_name.endswith(('.jpg', '.jpeg', '.png')):  # Check for image files
         file_path = os.path.join(images_folder, file_name)
+        return file_path
+    return None
 
-        # Load the image
-        image = cv2.imread(file_path)
 
+def post_proccesing_gray_image(image):
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+def save_image(image):
+    cv2.imwrite("cache.png", image)
+
+def recognition_vehicles(images):
+    crop_vehicle_images = []
+    for image in images:
         # Run the YOLO model on the current image
-        results_vehicles = model_vehicle(file_path)[0]
-        annotated_image = results_vehicles.plot() 
-        cv2.imshow("YOLO Custom Detection", annotated_image)
-        cv2.waitKey(0)
+        results_vehicles = model_vehicle(image)[0]
 
-        # Extract bounding box coordinates and class names
-        detections = []
-        bordered_img = image
         for detection in results_vehicles.boxes.data.tolist():
             carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
 
             if int(cls_cars) in vehicles and conf >= 0.80:
-                vehicle_crop_img = image[int(cary1):int(cary2), int(carx1):int(carx2)] 
-                results_lisence = model_lisence_plates(vehicle_crop_img)[0]
-                # cv2.imshow('cropped', vehicle_crop_img)
-                # cv2.waitKey(0)
-                annotated_image = results_lisence.plot() 
-                cv2.imshow("YOLO Custom Detection", annotated_image)
-                cv2.waitKey(0)
-                for lisence in results_lisence.boxes.data.tolist():
-                    x1, y1, x2, y2, conf, cls = lisence[:6]
+                crop_vehicle_images.append(image[int(cary1):int(cary2), int(carx1):int(carx2)])
+    return crop_vehicle_images
 
-                    lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)] 
-                    license_crop_gray = cv2.cvtColor(lisence_crop_img, cv2.COLOR_BGR2GRAY)
-                    # _, license_plate_crop_thresh = cv2.threshold(license_crop_gray, 60, 255, cv2.THRESH_BINARY_INV)
 
-                    cv2.imwrite("cache.png", lisence_crop_img)
+def ocr_detections(lisence_crop_img):
+    lisence_detection = reader.readtext(lisence_crop_img)
+    text = ""
+    for lisence_text in lisence_detection:
+        text += lisence_text[1]
+    return text
 
-                    lisence_detection = reader.readtext(lisence_crop_img)
-                    text = ""
-                    for lisence_text in lisence_detection:
-                        text += lisence_text[1]
-                    print(text)
-                    cv2.imshow('cropped', lisence_crop_img)
-                    cv2.waitKey(0)
 
-                    detections.append(text)
+def recognition_lisence_plate(images):
+    detections = []
+    for vehicle_crop_img in images:
+        # Run the YOLO model on the current vehicle image
+        results_lisence = model_lisence_plates(vehicle_crop_img)[0]
 
-                    bordered_img = draw_border(bordered_img, (int(carx1), int(cary1)), (int(carx2), int(cary2)), (0, 255, 0), 10)
-                    
-                    (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.3, 5)
+        for lisence in results_lisence.boxes.data.tolist():
+            x1, y1, x2, y2, conf = lisence[:5]
 
-                    cv2.putText(bordered_img, text, (int((carx2 + carx1 - text_width) / 2), int(cary1 + (text_height))),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 5)
+            if conf < 0.7:
+                continue
 
-        cv2.imshow("complete_img", bordered_img)
-        cv2.waitKey(0)
-        print(f"Detected objects for {file_name}: {detections}")
-        # Perform OCR on detected regions
-        # perform_ocr(image, detections)
-cv2.destroyAllWindows()
-print("Processing complete for all images!")
+            lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)] 
+            lisence_crop_img = post_proccesing_gray_image(lisence_crop_img)
+
+            save_image(lisence_crop_img)
+            detections.append([ocr_detections(lisence_crop_img), (x1, x2, y1, y2)])
+    
+            cv2.imshow('cropped', lisence_crop_img)
+            cv2.waitKey(0)
+
+    return detections
+
+
+def detect_lisence_plates(images_folder):
+    detections = []
+    images = []
+    for file_name in os.listdir(images_folder):
+
+        # Check images that we get
+        file_path = check_image(file_name=file_name, images_folder=images_folder)
+        if type(file_path) is None:
+            continue
+
+        image = cv2.imread(file_path)
+        images.append(image)
+
+    detections.extend(recognition_lisence_plate(recognition_vehicles(images=images)))
+    return detections
+
+
+# def completed_img():
+#     bordered_img = draw_border(bordered_img, (int(carx1), int(cary1)), (int(carx2), int(cary2)), (0, 255, 0), 10)
+            
+#     (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.3, 5)
+
+#     cv2.putText(bordered_img, text, (int((carx2 + carx1 - text_width) / 2), int(cary1 + (text_height))),
+#         cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 5)
+#     cv2.imshow("complete_img", bordered_img)
+#     cv2.waitKey(0)
+
+
+def main():
+    # Path to the images folder
+    category = "images"
+    images_folder = f"{HOME}/{category}"
+    detections = detect_lisence_plates(images_folder=images_folder)
+    print(*detections, sep="\n")
+
+
+if __name__ == "__main__":
+    main()
