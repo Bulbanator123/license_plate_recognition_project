@@ -1,0 +1,9 @@
+nc: 1
+
+names:
+ - lisence plate
+
+path: datasets
+train: images/train
+val: images/val
+test: images/test
