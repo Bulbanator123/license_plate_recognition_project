@@ -10,6 +10,8 @@ vehicles = [2, 3, 5, 7]
 reader = easyocr.Reader(["en"], gpu=True)
 
 HOME = os.getcwd()  # Getting the current working directory
+category_img = "images"
+category_save = "saves"
 
 def draw_border(img, top_left, bottom_right, color=(0, 255, 0), thickness=10, line_length_x=200, line_length_y=200):
     x1, y1 = top_left
@@ -40,8 +42,30 @@ def check_image(file_name, images_folder):
 def post_proccesing_gray_image(image):
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-def save_image(image):
-    cv2.imwrite("cache.png", image)
+
+def get_free_filename():
+    i = 1
+    while i < 1000000000:
+        num = str(i).rjust(8, "0")
+        filename = f"cache{num}.png"
+        path = os.path.join(category_save, filename)
+
+        if not os.path.exists(path):
+            return filename
+
+        i += 1
+    raise Exception("DataBase is overfilled")
+
+
+def save_lp(image):
+    filename = get_free_filename()
+    cv2.imwrite(f"{category_save}/{filename}", image)
+
+def clear_folder():
+    all_items = os.listdir(category_save)
+    for path in all_items:
+        file_to_delete = os.path.join(category_save, path)
+        os.remove(file_to_delete)
 
 def recognition_vehicles(images):
     crop_vehicle_images = []
@@ -80,7 +104,7 @@ def recognition_lisence_plate(images):
             lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)] 
             lisence_crop_img = post_proccesing_gray_image(lisence_crop_img)
 
-            save_image(lisence_crop_img)
+            save_lp(lisence_crop_img)
             detections.append([ocr_detections(lisence_crop_img), (x1, x2, y1, y2)])
     
             cv2.imshow('cropped', lisence_crop_img)
@@ -119,8 +143,8 @@ def detect_lisence_plates(images_folder):
 
 def main():
     # Path to the images folder
-    category = "images"
-    images_folder = f"{HOME}/{category}"
+    images_folder = f"{HOME}/{category_img}"
+    clear_folder()
     detections = detect_lisence_plates(images_folder=images_folder)
     print(*detections, sep="\n")
 
