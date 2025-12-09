@@ -82,8 +82,8 @@ def recognition_vehicles(images):
 
 
 def ocr_detections(lisence_crop_img):
-    lisence_detection = reader.readtext(lisence_crop_img)
     text = ""
+    lisence_detection = reader.readtext(lisence_crop_img)
     for lisence_text in lisence_detection:
         text += lisence_text[1]
     return text
@@ -100,13 +100,20 @@ def recognition_lisence_plate(images):
 
             if conf < 0.7:
                 continue
-
             lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)] 
+
+            scale_percent = 100 + max(0, (200 - lisence_crop_img.shape[1])/lisence_crop_img.shape[1]) * 100 # percent of original size
+            print(scale_percent)
+            width = int(lisence_crop_img.shape[1] * scale_percent / 100)
+            height = int(lisence_crop_img.shape[0] * scale_percent / 100)
+            lisence_crop_img = cv2.resize(lisence_crop_img, (width, height), interpolation = cv2.INTER_AREA)
             lisence_crop_img = post_proccesing_gray_image(lisence_crop_img)
+
+            # Now apply the OCR on the processed image
 
             save_lp(lisence_crop_img)
             detections.append([ocr_detections(lisence_crop_img), (x1, x2, y1, y2)])
-    
+
             cv2.imshow('cropped', lisence_crop_img)
             cv2.waitKey(0)
 
