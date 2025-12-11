@@ -3,15 +3,19 @@ from PIL import Image
 import cv2
 import easyocr
 import os
+import numpy as np
+import tensorflow as tf
 
-model_lisence_plates = YOLO('models/yolo_lisence_plate.pt')
-model_vehicle = YOLO('models/yolov8m.pt')
+model_lisence_plates = YOLO('model/yolo_lisence_plate.pt')
+model_vehicle = YOLO('model/yolov8m.pt')
 vehicles = [2, 3, 5, 7]
+
 reader = easyocr.Reader(["en"], gpu=True)
 
 HOME = os.getcwd()  # Getting the current working directory
 category_img = "images"
 category_save = "saves"
+
 
 def draw_border(img, top_left, bottom_right, color=(0, 255, 0), thickness=10, line_length_x=200, line_length_y=200):
     x1, y1 = top_left
@@ -39,8 +43,10 @@ def check_image(file_name, images_folder):
     return None
 
 
-def post_proccesing_gray_image(image):
-    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+def post_proccesing_image(image):
+    thresh = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.bitwise_not(thresh)
+    return thresh
 
 
 def get_free_filename():
@@ -61,11 +67,13 @@ def save_lp(image):
     filename = get_free_filename()
     cv2.imwrite(f"{category_save}/{filename}", image)
 
+
 def clear_folder():
     all_items = os.listdir(category_save)
     for path in all_items:
         file_to_delete = os.path.join(category_save, path)
         os.remove(file_to_delete)
+
 
 def recognition_vehicles(images):
     crop_vehicle_images = []
@@ -83,7 +91,7 @@ def recognition_vehicles(images):
 
 def ocr_detections(lisence_crop_img):
     text = ""
-    lisence_detection = reader.readtext(lisence_crop_img)
+    lisence_detection = reader.readtext(lisence_crop_img, width_ths=0.1, min_size=50)
     for lisence_text in lisence_detection:
         text += lisence_text[1]
     return text
@@ -101,13 +109,12 @@ def recognition_lisence_plate(images):
             if conf < 0.7:
                 continue
             lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)] 
-
             scale_percent = 100 + max(0, (200 - lisence_crop_img.shape[1])/lisence_crop_img.shape[1]) * 100 # percent of original size
             print(scale_percent)
             width = int(lisence_crop_img.shape[1] * scale_percent / 100)
             height = int(lisence_crop_img.shape[0] * scale_percent / 100)
             lisence_crop_img = cv2.resize(lisence_crop_img, (width, height), interpolation = cv2.INTER_AREA)
-            lisence_crop_img = post_proccesing_gray_image(lisence_crop_img)
+            lisence_crop_img = post_proccesing_image(lisence_crop_img)
 
             # Now apply the OCR on the processed image
 
@@ -120,9 +127,13 @@ def recognition_lisence_plate(images):
     return detections
 
 
-def detect_lisence_plates(images_folder):
+def detect_lisence_plates_in_folder(images_folder):
     detections = []
     images = []
+
+    if type(images_folder) is not str: 
+        return None
+    
     for file_name in os.listdir(images_folder):
 
         # Check images that we get
@@ -133,7 +144,7 @@ def detect_lisence_plates(images_folder):
         image = cv2.imread(file_path)
         images.append(image)
 
-    detections.extend(recognition_lisence_plate(recognition_vehicles(images=images)))
+    detections = recognition_lisence_plate(recognition_vehicles(images=images))
     return detections
 
 
@@ -150,9 +161,20 @@ def detect_lisence_plates(images_folder):
 
 def main():
     # Path to the images folder
-    images_folder = f"{HOME}/{category_img}"
     clear_folder()
-    detections = detect_lisence_plates(images_folder=images_folder)
+    images_folder = f"{HOME}/{category_img}"
+    frame_num = -1
+    ret = True
+    # cap = cv2.VideoCapture('videos/sample.mp4')
+    detections = []
+    # while cap.isOpened():
+    #     frame_num += 1
+    #     ret, frame = cap.read()
+    #     frame = cv2.resize(image, (780, 540), interpolation=cv2.INTER_LINEAR)
+    #     if ret == True:
+    #         cv2.imshow('original video', frame)
+    #         cv2.waitKey(0)
+    detections.extend(detect_lisence_plates_in_folder(images_folder=images_folder))
     print(*detections, sep="\n")
 
 

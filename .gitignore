@@ -230,7 +230,9 @@ runs/
 kagglehub
 
 # prev models
-models/prev
+model/prev
 
 # trash func
 trash.py
+
+videos/
