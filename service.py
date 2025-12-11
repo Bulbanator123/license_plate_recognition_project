@@ -4,7 +4,7 @@ import cv2
 import easyocr
 import os
 import numpy as np
-import tensorflow as tf
+
 
 model_lisence_plates = YOLO('model/yolo_lisence_plate.pt')
 model_vehicle = YOLO('model/yolov8m.pt')
@@ -36,16 +36,8 @@ def draw_border(img, top_left, bottom_right, color=(0, 255, 0), thickness=10, li
     return img
 
 
-def check_image(file_name, images_folder):
-    if file_name.endswith(('.jpg', '.jpeg', '.png')):  # Check for image files
-        file_path = os.path.join(images_folder, file_name)
-        return file_path
-    return None
-
-
 def post_proccesing_image(image):
     thresh = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.bitwise_not(thresh)
     return thresh
 
 
@@ -75,54 +67,51 @@ def clear_folder():
         os.remove(file_to_delete)
 
 
-def recognition_vehicles(images):
+def recognition_vehicles(image):
     crop_vehicle_images = []
-    for image in images:
-        # Run the YOLO model on the current image
-        results_vehicles = model_vehicle(image)[0]
+    # Run the YOLO model on the current image
+    results_vehicles = model_vehicle(image)[0]
 
-        for detection in results_vehicles.boxes.data.tolist():
-            carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
+    for detection in results_vehicles.boxes.data.tolist():
+        carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
 
-            if int(cls_cars) in vehicles and conf >= 0.80:
-                crop_vehicle_images.append(image[int(cary1):int(cary2), int(carx1):int(carx2)])
+        if int(cls_cars) in vehicles and conf >= 0.80:
+            crop_vehicle_images.append(image[int(cary1):int(cary2), int(carx1):int(carx2)])
     return crop_vehicle_images
 
 
 def ocr_detections(lisence_crop_img):
     text = ""
-    lisence_detection = reader.readtext(lisence_crop_img, width_ths=0.1, min_size=50)
+    lisence_detection = reader.readtext(lisence_crop_img, width_ths=0.1)
     for lisence_text in lisence_detection:
         text += lisence_text[1]
     return text
 
 
 def recognition_lisence_plate(images):
-    detections = []
     for vehicle_crop_img in images:
-        # Run the YOLO model on the current vehicle image
+        detections = []
+            # Run the YOLO model on the current vehicle image
         results_lisence = model_lisence_plates(vehicle_crop_img)[0]
 
+        # cv2.imshow('original video', results_lisence.plot())
+        # cv2.waitKey(0)
+        
         for lisence in results_lisence.boxes.data.tolist():
             x1, y1, x2, y2, conf = lisence[:5]
 
             if conf < 0.7:
                 continue
             lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)] 
-            scale_percent = 100 + max(0, (200 - lisence_crop_img.shape[1])/lisence_crop_img.shape[1]) * 100 # percent of original size
-            print(scale_percent)
-            width = int(lisence_crop_img.shape[1] * scale_percent / 100)
-            height = int(lisence_crop_img.shape[0] * scale_percent / 100)
-            lisence_crop_img = cv2.resize(lisence_crop_img, (width, height), interpolation = cv2.INTER_AREA)
             lisence_crop_img = post_proccesing_image(lisence_crop_img)
 
             # Now apply the OCR on the processed image
-
-            save_lp(lisence_crop_img)
-            detections.append([ocr_detections(lisence_crop_img), (x1, x2, y1, y2)])
-
-            cv2.imshow('cropped', lisence_crop_img)
-            cv2.waitKey(0)
+            det_text = ocr_detections(lisence_crop_img)
+            if len(det_text) > 0:
+                detections.append([det_text, (x1, x2, y1, y2)])
+                save_lp(lisence_crop_img)
+            # cv2.imshow('cropped', lisence_crop_img)
+            # cv2.waitKey(0)
 
     return detections
 
@@ -135,16 +124,32 @@ def detect_lisence_plates_in_folder(images_folder):
         return None
     
     for file_name in os.listdir(images_folder):
+        if file_name.endswith((".png", ".jpg", ".jpeg")):
+            # Check images that we get
+            file_path = os.path.join(images_folder, file_name)
+            if type(file_path) is None:
+                continue
 
-        # Check images that we get
-        file_path = check_image(file_name=file_name, images_folder=images_folder)
-        if type(file_path) is None:
-            continue
+            image = cv2.imread(file_path)
+            detections.extend([recognition_lisence_plate(recognition_vehicles(image=image))])
 
-        image = cv2.imread(file_path)
-        images.append(image)
+        if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
+            # Check videos that we get
+            file_path = os.path.join(images_folder, file_name)
+            if type(file_path) is None:
+                continue
 
-    detections = recognition_lisence_plate(recognition_vehicles(images=images))
+            frame_num = -1
+            ret = True
+            cap = cv2.VideoCapture('videos/sample.mp4')
+            while ret:
+                frame_num += 1
+                ret, frame = cap.read()
+                if ret == True:
+                    # frame = cv2.resize(frame, (780, 540), interpolation=cv2.INTER_LINEAR)
+                    print(frame_num)
+                    detections.extend(recognition_lisence_plate(recognition_vehicles(image=frame)))
+                
     return detections
 
 
@@ -162,19 +167,9 @@ def detect_lisence_plates_in_folder(images_folder):
 def main():
     # Path to the images folder
     clear_folder()
+    category_img = "images"
     images_folder = f"{HOME}/{category_img}"
-    frame_num = -1
-    ret = True
-    # cap = cv2.VideoCapture('videos/sample.mp4')
-    detections = []
-    # while cap.isOpened():
-    #     frame_num += 1
-    #     ret, frame = cap.read()
-    #     frame = cv2.resize(image, (780, 540), interpolation=cv2.INTER_LINEAR)
-    #     if ret == True:
-    #         cv2.imshow('original video', frame)
-    #         cv2.waitKey(0)
-    detections.extend(detect_lisence_plates_in_folder(images_folder=images_folder))
+    detections = detect_lisence_plates_in_folder(images_folder=images_folder)
     print(*detections, sep="\n")
 
 

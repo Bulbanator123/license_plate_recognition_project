@@ -1,2 +1,2 @@
-detections = detect_lisence_plates(images_folder=images_folder)
-    # print(*detections, sep="\n")
+cv2.imshow('cropped', lisence_crop_img)
+            # cv2.waitKey(0)
