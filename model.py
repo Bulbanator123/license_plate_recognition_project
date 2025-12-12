@@ -106,7 +106,7 @@ def detect_lisence_plates_in_folder(images_folder):
                 continue
 
             image = cv2.imread(file_path)
-            detections.extend(recognition_lisence_plate(recognition_vehicles(image=image)))
+            detections.extend(list(detect_nlpr_by_image(image)))
 
         if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
             # Check videos that we get
@@ -114,16 +114,8 @@ def detect_lisence_plates_in_folder(images_folder):
             if type(file_path) is None:
                 continue
 
-            frame_num = -1              
-            ret = True
             cap = cv2.VideoCapture(file_path)
-            while ret:
-                frame_num += 1
-                ret, frame = cap.read()
-                if ret == True:
-                    # frame = cv2.resize(frame, (780, 540), interpolation=cv2.INTER_LINEAR)
-                    print(frame_num)
-                    detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
+            detections.extend(list(detect_nlpr_by_video(cap)))
                 
     return detections
 
