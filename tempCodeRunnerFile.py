@@ -1,1 +1,1 @@
-    # ocr_model="cct-xs-v1-global-model",
+cvtColor
