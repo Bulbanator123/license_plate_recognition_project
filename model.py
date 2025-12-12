@@ -14,125 +14,136 @@ reader = LicensePlateRecognizer("cct-xs-v1-global-model")
 HOME = os.getcwd()  # Getting the current working directory
 category_img = "images"
 category_save = "saves"
-class FolderEditor():
-    def get_free_filename(self):
-        i = 1
-        while i < 1000000000:
-            num = str(i).rjust(8, "0")
-            filename = f"cache{num}.png"
-            path = os.path.join(category_save, filename)
-
-            if not os.path.exists(path):
-                return filename
-
-            i += 1
-        raise Exception("DataBase is overfilled")
 
 
-    def save_lp(self, image):
-        filename = self.get_free_filename()
-        cv2.imwrite(f"{category_save}/{filename}", image)
+def post_proccesing_image(image):
+    thresh = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return thresh
 
 
-    def clear_folder(self):
-        all_items = os.listdir(category_save)
-        for path in all_items:
-            file_to_delete = os.path.join(category_save, path)
-            os.remove(file_to_delete)
+def get_free_filename():
+    i = 1
+    while i < 1000000000:
+        num = str(i).rjust(8, "0")
+        filename = f"cache{num}.png"
+        path = os.path.join(category_save, filename)
+
+        if not os.path.exists(path):
+            return filename
+
+        i += 1
+    raise Exception("DataBase is overfilled")
 
 
-class NumberPlateRecognition():
-    def __init__(self, working_folder):
-        self.saver = FolderEditor()
-        self.working_folder = working_folder
+def save_lp(image):
+    filename = get_free_filename()
+    cv2.imwrite(f"{category_save}/{filename}", image)
 
 
-    def post_proccesing_image(image):
-        thresh = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        return thresh
+def clear_folder():
+    all_items = os.listdir(category_save)
+    for path in all_items:
+        file_to_delete = os.path.join(category_save, path)
+        os.remove(file_to_delete)
 
 
-    def recognition_vehicles(image):
-        crop_vehicle_images = []
-        # Run the YOLO model on the current image
-        results_vehicles = model_vehicle(image)[0]
+def recognition_vehicles(image):
+    crop_vehicle_images = []
+    # Run the YOLO model on the current image
+    results_vehicles = model_vehicle(image)[0]
 
-        for detection in results_vehicles.boxes.data.tolist():
-            carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
+    for detection in results_vehicles.boxes.data.tolist():
+        carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
 
-            if int(cls_cars) in vehicles and conf >= 0.80:
-                crop_vehicle_images.append(image[int(cary1):int(cary2), int(carx1):int(carx2)])
-        return crop_vehicle_images
-
-
-    def ocr_detections(lisence_crop_img):
-        lisence_detection = reader.run(lisence_crop_img)
-        return lisence_detection
+        if int(cls_cars) in vehicles and conf >= 0.80:
+            crop_vehicle_images.append(image[int(cary1):int(cary2), int(carx1):int(carx2)])
+    return crop_vehicle_images
 
 
-    def recognition_lisence_plate(images):
-        detections = []
-        for vehicle_crop_img in images:
-                # Run the YOLO model on the current vehicle image
-            results_lisence = model_lisence_plates(vehicle_crop_img)[0]
-
-            # cv2.imshow('original video', results_lisence.plot())
-            # cv2.waitKey(0)
-            
-            for lisence in results_lisence.boxes.data.tolist():
-                x1, y1, x2, y2, conf = lisence[:5]
-
-                if conf < 0.7:
-                    continue
-                lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)]
-                # lisence_crop_img = post_proccesing_image(lisence_crop_img)
-                # Now apply the OCR on the processed image
-                det_text = ocr_detections(lisence_crop_img)
-                detections.append([*det_text, (x1, x2, y1, y2)])
-                print(1)
-                save_lp(lisence_crop_img)
-                # cv2.imshow('cropped', lisence_crop_img)
-                # cv2.waitKey(0)
-
-        return detections
+def ocr_detections(lisence_crop_img):
+    lisence_detection = reader.run(lisence_crop_img)
+    return lisence_detection
 
 
-    def detect_lisence_plates_in_folder(self, images_folder):
-        detections = []
-        images = []
+def recognition_lisence_plate(images):
+    detections = []
+    for vehicle_crop_img in images:
+            # Run the YOLO model on the current vehicle image
+        results_lisence = model_lisence_plates(vehicle_crop_img)[0]
 
-        if type(images_folder) is not str: 
-            return None
+        # cv2.imshow('original video', results_lisence.plot())
+        # cv2.waitKey(0)
         
-        for file_name in os.listdir(images_folder):
-            if file_name.endswith((".png", ".jpg", ".jpeg")):
-                # Check images that we get
-                file_path = os.path.join(images_folder, file_name)
-                if type(file_path) is None:
-                    continue
+        for lisence in results_lisence.boxes.data.tolist():
+            x1, y1, x2, y2, conf = lisence[:5]
 
-                image = cv2.imread(file_path)
-                detections.extend(recognition_lisence_plate(recognition_vehicles(image=image)))
+            if conf < 0.7:
+                continue
+            lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)]
+            # lisence_crop_img = post_proccesing_image(lisence_crop_img)
+            # Now apply the OCR on the processed image
+            det_text = ocr_detections(lisence_crop_img)
+            detections.append({"lisence_plate_text": " ".join(det_text), "lp_coords": (x1, x2, y1, y2) })
+            print(1)
+            save_lp(lisence_crop_img)
+            # cv2.imshow('cropped', lisence_crop_img)
+            # cv2.waitKey(0)
 
-            if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
-                # Check videos that we get
-                file_path = os.path.join(images_folder, file_name)
-                if type(file_path) is None:
-                    continue
+    return detections
 
-                frame_num = -1              
-                ret = True
-                cap = cv2.VideoCapture(file_path)
-                while ret:
-                    frame_num += 1
-                    ret, frame = cap.read()
-                    if ret == True:
-                        # frame = cv2.resize(frame, (780, 540), interpolation=cv2.INTER_LINEAR)
-                        print(frame_num)
-                        detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
-                    
-        return detections
 
+def detect_lisence_plates_in_folder(images_folder):
+    detections = []
+
+    if type(images_folder) is not str: 
+        return None
+    
+    for file_name in os.listdir(images_folder):
+        if file_name.endswith((".png", ".jpg", ".jpeg")):
+            # Check images that we get
+            file_path = os.path.join(images_folder, file_name)
+            if type(file_path) is None:
+                continue
+
+            image = cv2.imread(file_path)
+            detections.extend(recognition_lisence_plate(recognition_vehicles(image=image)))
+
+        if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
+            # Check videos that we get
+            file_path = os.path.join(images_folder, file_name)
+            if type(file_path) is None:
+                continue
+
+            frame_num = -1              
+            ret = True
+            cap = cv2.VideoCapture(file_path)
+            while ret:
+                frame_num += 1
+                ret, frame = cap.read()
+                if ret == True:
+                    # frame = cv2.resize(frame, (780, 540), interpolation=cv2.INTER_LINEAR)
+                    print(frame_num)
+                    detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
+                
+    return detections
+
+
+def detect_nlpr_by_image(image):
+    detections = recognition_lisence_plate(recognition_vehicles(image=image))
+    return detections
+
+def detect_nlpr_by_video(video):
+    detections = []
+    frame_num = -1              
+    ret = True
+    while ret:
+        frame_num += 1
+        ret, frame = video.read()
+        if ret == True:
+            # frame = cv2.resize(frame, (780, 540), interpolation=cv2.INTER_LINEAR)
+            print(frame_num)
+            detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
+    return detections
 
 def main():
     # Path to the images folder
