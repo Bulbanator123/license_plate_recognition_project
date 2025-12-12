@@ -56,7 +56,7 @@ def recognition_vehicles(image):
         carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
 
         if int(cls_cars) in vehicles and conf >= 0.80:
-            crop_vehicle_images.append(image[int(cary1):int(cary2), int(carx1):int(carx2)])
+            crop_vehicle_images.append([image[int(cary1):int(cary2), int(carx1):int(carx2)], (carx1, cary1, carx2, cary2)])
     return crop_vehicle_images
 
 
@@ -65,9 +65,9 @@ def ocr_detections(lisence_crop_img):
     return lisence_detection
 
 
-def recognition_lisence_plate(images):
+def recognition_lisence_plate(data: list):
     detections = []
-    for vehicle_crop_img in images:
+    for vehicle_crop_img, carcoords in data:
             # Run the YOLO model on the current vehicle image
         results_lisence = model_lisence_plates(vehicle_crop_img)[0]
 
@@ -83,8 +83,7 @@ def recognition_lisence_plate(images):
             # lisence_crop_img = post_proccesing_image(lisence_crop_img)
             # Now apply the OCR on the processed image
             det_text = ocr_detections(lisence_crop_img)
-            detections.append({"lisence_plate_text": " ".join(det_text), "lp_coords": (x1, x2, y1, y2) })
-            print(1)
+            detections.append({"lisence_plate_text": " ".join(det_text), "lp_coords": (x1 + carcoords[0], x2 + carcoords[0], y1 + carcoords[1], y2 + carcoords[1]), "carcoords": (carcoords[0], carcoords[2], carcoords[1], carcoords[3])})
             save_lp(lisence_crop_img)
             # cv2.imshow('cropped', lisence_crop_img)
             # cv2.waitKey(0)
@@ -137,13 +136,26 @@ def detect_nlpr_by_video(video):
             detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
     return detections
 
+
+def draw_rectangle(image, xy):
+    pt1 = tuple([int(xy[0]), int(xy[2])])
+    pt2 = tuple([int(xy[1]), int(xy[3])])
+    cv2.rectangle(image, pt1, pt2, (255, 0, 0), -1)
+    cv2.imshow("check", image)
+    cv2.waitKey(0)
+
 def main():
     # Path to the images folder
     clear_folder()
-    category_img = "images"
-    images_folder = f"{HOME}/{category_img}"
-    detections = detect_lisence_plates_in_folder(images_folder=images_folder)
-    print(*detections, sep="\n")
+    # category_img = "images"
+    # images_folder = f"{HOME}/{category_img}"
+    # detections = detect_lisence_plates_in_folder(images_folder=images_folder)
+    # print(*detections, sep="\n")
+    image = cv2.imread("images/image0.png")
+    det = detect_nlpr_by_image(image)
+    print(det[0]["carcoords"])
+    print(det[0]["lp_coords"])
+    draw_rectangle(image=image, xy=det[0]["lp_coords"])
 
 
 if __name__ == "__main__":
