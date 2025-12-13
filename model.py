@@ -55,14 +55,14 @@ def recognition_vehicles(image):
     for detection in results_vehicles.boxes.data.tolist():
         carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
 
-        if int(cls_cars) in vehicles and conf >= 0.80:
+        if int(cls_cars) in vehicles and conf >= 0.70:
             crop_vehicle_images.append([image[int(cary1):int(cary2), int(carx1):int(carx2)], (carx1, cary1, carx2, cary2)])
     return crop_vehicle_images
 
 
 def ocr_detections(lisence_crop_img):
     lisence_detection, score = reader.run(lisence_crop_img, return_confidence=True)
-    if sum(score[0]) / len(score[0]) > 0.90:
+    if sum(score[0]) / len(score[0]) > 0.70:
         return lisence_detection
     return None
 
@@ -79,7 +79,7 @@ def recognition_lisence_plate(data: list):
         for lisence in results_lisence.boxes.data.tolist():
             x1, y1, x2, y2, conf = lisence[:5]
 
-            if conf < 0.7:
+            if conf < 0.70:
                 continue
             lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)]
             # lisence_crop_img = post_proccesing_image(lisence_crop_img)
@@ -108,19 +108,19 @@ def detect_lisence_plates_in_folder(images_folder):
             # Check images that we get
 
             image = cv2.imread(file_path)
-            detections.extend(list(detect_nlpr_by_image(image)))
+            detections.extend([detect_nlpr_by_image(image)])
 
         if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
             # Check videos that we get
 
             cap = cv2.VideoCapture(file_path)
-            detections.extend(list(detect_nlpr_by_video(cap)))
+            detections.extend(detect_nlpr_by_video(cap))
                 
     return detections
 
 
 def detect_nlpr_by_image(image):
-    detections = recognition_lisence_plate(recognition_vehicles(image=image))
+    detections = {0: recognition_lisence_plate(recognition_vehicles(image=image))}
     return detections
 
 
@@ -133,7 +133,9 @@ def detect_nlpr_by_video(video):
         ret, frame = video.read()
         if ret == True:
             print(frame_num)
-            detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
+            det = recognition_lisence_plate(recognition_vehicles(image=frame))
+            if det:
+                detections.append({frame_num: det})
     return detections
 
 
@@ -143,7 +145,6 @@ def draw_rectangle(image, xy):
     cv2.rectangle(image, pt1, pt2, (255, 0, 0), -1)
     cv2.imshow("check", image)
     cv2.waitKey(0)
-
 
 def main():
     # Path to the images folder
