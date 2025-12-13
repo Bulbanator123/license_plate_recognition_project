@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 
+st.set_page_config(page_title="Number Plates Recognition", page_icon="favicon.ico")
 st.title("Number Plates Recognition")
 st.write("Распознование номеров")
 
