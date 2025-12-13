@@ -108,7 +108,11 @@ def detect_lisence_plates_in_folder(images_folder):
             # Check images that we get
 
             image = cv2.imread(file_path)
-            detections.extend([detect_nlpr_by_image(image)])
+            det = [detect_nlpr_by_image(image)]
+            new_img = draw_buety_detections(image, det)
+            cv2.imshow("buety_image", new_img)
+            cv2.waitKey(0)
+            detections.extend(det)
 
         if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
             # Check videos that we get
@@ -139,20 +143,84 @@ def detect_nlpr_by_video(video):
     return detections
 
 
-def draw_rectangle(image, xy):
-    pt1 = tuple([int(xy[0]), int(xy[2])])
-    pt2 = tuple([int(xy[1]), int(xy[3])])
-    cv2.rectangle(image, pt1, pt2, (255, 0, 0), -1)
-    cv2.imshow("check", image)
-    cv2.waitKey(0)
+def draw_buety_detections(image, detections):
+    # create copy of image
+    img_copy = image.copy()
+    
+    # colors
+    CAR_COLOR = (0, 255, 0)      # car
+    LP_COLOR = (0, 0, 255)       # lp
+    TEXT_COLOR = (255, 255, 255) # text
+    TEXT_BG_COLOR = (0, 0, 0)    # text_back
+    for detection in detections:
+        for frame in detection:
+            for car in detection[frame]:
+                print(car)
+                car_x1, car_x2, car_y1, car_y2 = [int(coord) for coord in car["car_coords"]]
+                
+                # Рисуем прямоугольник для автомобиля
+                cv2.rectangle(img_copy, 
+                            (car_x1, car_y1), 
+                            (car_x2, car_y2), 
+                            CAR_COLOR, 2)
+                
+                # Извлекаем координаты номерного знака
+                lp_x1, lp_x2, lp_y1, lp_y2 = [int(coord) for coord in car["lp_coords"]]
+                
+                # Рисуем прямоугольник для номерного знака (более толстый)
+                cv2.rectangle(img_copy, 
+                            (lp_x1, lp_y1), 
+                            (lp_x2, lp_y2), 
+                            LP_COLOR, 3)
+                
+                # Получаем текст номера
+                lp_text = car.get("lp_text", "")
+                
+                # Добавляем текст над bounding box'ом автомобиля
+                if lp_text:
+                    # Фон для текста номера
+                    text_size = cv2.getTextSize(lp_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+                    
+                    # Позиционируем текст над bounding box'ом номера
+                    text_x = lp_x1
+                    text_y = lp_y1 - 10 if lp_y1 - 10 > 10 else lp_y2 + 25
+                    
+                    # Рисуем фон для текста
+                    cv2.rectangle(img_copy,
+                                (text_x, text_y - text_size[1] - 5),
+                                (text_x + text_size[0] + 10, text_y + 5),
+                                TEXT_BG_COLOR,
+                                -1)
+                    
+                    # Рисуем текст номера
+                    cv2.putText(img_copy,
+                            lp_text,
+                            (text_x + 5, text_y),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7,
+                            TEXT_COLOR,
+                            2)
+                
+                # Добавляем метку "Car" над bounding box'ом автомобиля
+                cv2.putText(img_copy,
+                        "Car",
+                        (car_x1, car_y1 - 10 if car_y1 - 10 > 10 else car_y1 + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        CAR_COLOR,
+                        2)
+            
+    return img_copy
+
 
 def main():
     # Path to the images folder
     clear_folder()
-    category_img = "videos"
+    category_img = "images"
     images_folder = f"{HOME}/{category_img}"
     detections = detect_lisence_plates_in_folder(images_folder=images_folder)
     print(*detections, sep="\n")
+
     # image = cv2.imread("images/image0.png")
     # det = detect_nlpr_by_image(image)
     # print(det[0]["carcoords"])
