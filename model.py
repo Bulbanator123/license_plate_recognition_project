@@ -61,8 +61,10 @@ def recognition_vehicles(image):
 
 
 def ocr_detections(lisence_crop_img):
-    lisence_detection = reader.run(lisence_crop_img)
-    return lisence_detection
+    lisence_detection, score = reader.run(lisence_crop_img, return_confidence=True)
+    if sum(score[0]) / len(score[0]) > 0.90:
+        return lisence_detection
+    return None
 
 
 def recognition_lisence_plate(data: list):
@@ -83,8 +85,10 @@ def recognition_lisence_plate(data: list):
             # lisence_crop_img = post_proccesing_image(lisence_crop_img)
             # Now apply the OCR on the processed image
             det_text = ocr_detections(lisence_crop_img)
-            detections.append({"lisence_plate_text": " ".join(det_text), "lp_coords": (x1 + carcoords[0], x2 + carcoords[0], y1 + carcoords[1], y2 + carcoords[1]), "carcoords": (carcoords[0], carcoords[2], carcoords[1], carcoords[3])})
-            save_lp(lisence_crop_img)
+            if det_text is not None:
+                detections.append({"lp_text": " ".join(det_text), "lp_coords": (x1 + carcoords[0], x2 + carcoords[0], y1 + carcoords[1], y2 + carcoords[1]), 
+                                   "car_coords": (carcoords[0], carcoords[2], carcoords[1], carcoords[3])})
+                save_lp(lisence_crop_img)
             # cv2.imshow('cropped', lisence_crop_img)
             # cv2.waitKey(0)
 
@@ -98,20 +102,16 @@ def detect_lisence_plates_in_folder(images_folder):
         return None
     
     for file_name in os.listdir(images_folder):
+        file_path = os.path.join(images_folder, file_name)
+
         if file_name.endswith((".png", ".jpg", ".jpeg")):
             # Check images that we get
-            file_path = os.path.join(images_folder, file_name)
-            if type(file_path) is None:
-                continue
 
             image = cv2.imread(file_path)
             detections.extend(list(detect_nlpr_by_image(image)))
 
         if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
             # Check videos that we get
-            file_path = os.path.join(images_folder, file_name)
-            if type(file_path) is None:
-                continue
 
             cap = cv2.VideoCapture(file_path)
             detections.extend(list(detect_nlpr_by_video(cap)))
@@ -123,6 +123,7 @@ def detect_nlpr_by_image(image):
     detections = recognition_lisence_plate(recognition_vehicles(image=image))
     return detections
 
+
 def detect_nlpr_by_video(video):
     detections = []
     frame_num = -1              
@@ -131,7 +132,6 @@ def detect_nlpr_by_video(video):
         frame_num += 1
         ret, frame = video.read()
         if ret == True:
-            # frame = cv2.resize(frame, (780, 540), interpolation=cv2.INTER_LINEAR)
             print(frame_num)
             detections.extend(list(recognition_lisence_plate(recognition_vehicles(image=frame))))
     return detections
@@ -144,18 +144,19 @@ def draw_rectangle(image, xy):
     cv2.imshow("check", image)
     cv2.waitKey(0)
 
+
 def main():
     # Path to the images folder
     clear_folder()
-    # category_img = "images"
-    # images_folder = f"{HOME}/{category_img}"
-    # detections = detect_lisence_plates_in_folder(images_folder=images_folder)
-    # print(*detections, sep="\n")
-    image = cv2.imread("images/image0.png")
-    det = detect_nlpr_by_image(image)
-    print(det[0]["carcoords"])
-    print(det[0]["lp_coords"])
-    draw_rectangle(image=image, xy=det[0]["lp_coords"])
+    category_img = "videos"
+    images_folder = f"{HOME}/{category_img}"
+    detections = detect_lisence_plates_in_folder(images_folder=images_folder)
+    print(*detections, sep="\n")
+    # image = cv2.imread("images/image0.png")
+    # det = detect_nlpr_by_image(image)
+    # print(det[0]["carcoords"])
+    # print(det[0]["lp_coords"])
+    # draw_rectangle(image=image, xy=det[0]["lp_coords"])
 
 
 if __name__ == "__main__":
