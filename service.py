@@ -7,8 +7,8 @@ from io import BytesIO
 import tempfile
 import os
 import json
-from fastapi.responses import JSONResponse, Response
-from model import detect_nlpr_by_image, detect_nlpr_by_video, draw_buety_detections
+from fastapi.responses import JSONResponse, Response, FileResponse
+from model import detect_nlpr_by_image, detect_nlpr_by_video, draw_buety_detections_on_image, draw_buety_detections_on_video
 
 
 app = FastAPI()
@@ -40,7 +40,7 @@ async def nplr(file: UploadFile = File(...)):
         elif file.filename.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
             video = cv2.VideoCapture(tmp_path)
             detections = detect_nlpr_by_video(video)
-
+        os.unlink(tmp.name)
         return JSONResponse(
             content={
                 "detections": detections
@@ -59,24 +59,41 @@ async def return_nplr_image(data: str = Form(...), file: UploadFile = File(...))
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
-    img = cv2.imread(tmp_path)
-    print(det_dict)
-    new_img = draw_buety_detections(img, det_dict)
-    cv2.imshow("weriw", new_img)
-    cv2.waitKey(0)
-    # 2. Конвертируем BGR (OpenCV) в RGB (обычный формат)
-    image_rgb = cv2.cvtColor(new_img, cv2.COLOR_BGR2RGB)
 
-    pil_image = Image.fromarray(image_rgb)
+    # read image with OpenCV
+    if file.filename.endswith((".png", ".jpg", ".jpeg")):
+        img = cv2.imread(tmp_path)
+
+        new_img = draw_buety_detections_on_image(img, det_dict)
+        # 2. Конвертируем BGR (OpenCV) в RGB (обычный формат)
+        image_rgb = cv2.cvtColor(new_img, cv2.COLOR_BGR2RGB)
+
+        pil_image = Image.fromarray(image_rgb)
+        
+        # Сохраняем в BytesIO
+        img_io = BytesIO()
+        pil_image.save(img_io, 'PNG')
+        img_io.seek(0)
+        os.unlink(tmp_path)
+
+        # return image
+        return Response(
+            content=img_io.getvalue(), 
+            media_type="image/png", 
+            status_code=200)
     
-    # Сохраняем в BytesIO
-    img_io = BytesIO()
-    pil_image.save(img_io, 'PNG')
-    img_io.seek(0)
+    elif file.filename.endswith((".mp4")):
+        video = cv2.VideoCapture(tmp_path)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_output:
+            output_path = temp_output.name
+        
+        draw_buety_detections_on_video(output_path, video, det_dict)
 
-    # Возвращаем изображение
-    # return JSONResponse(content=det_dict)
-    return Response(
-        content=img_io.getvalue(), 
-        media_type="image/png", 
-        status_code=200)
+        # Удаляем временные файлы
+        os.unlink(tmp_path)
+        
+        return FileResponse(
+            path=output_path,
+            media_type="video/mp4",
+            filename="result.mp4"
+        )

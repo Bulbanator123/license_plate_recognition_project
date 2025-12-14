@@ -3,6 +3,7 @@ import cv2
 from fast_plate_ocr import LicensePlateRecognizer
 import os
 import numpy as np
+import subprocess
 
 
 model_lisence_plates = YOLO('model/yolo_lisence_plate.pt')
@@ -88,7 +89,6 @@ def recognition_lisence_plate(data: list):
             if det_text is not None:
                 detections.append({"lp_text": " ".join(det_text), "lp_coords": (x1 + carcoords[0], x2 + carcoords[0], y1 + carcoords[1], y2 + carcoords[1]), 
                                    "car_coords": (carcoords[0], carcoords[2], carcoords[1], carcoords[3])})
-                save_lp(lisence_crop_img)
             # cv2.imshow('cropped', lisence_crop_img)
             # cv2.waitKey(0)
 
@@ -109,7 +109,7 @@ def detect_lisence_plates_in_folder(images_folder):
 
             image = cv2.imread(file_path)
             det = [detect_nlpr_by_image(image)]
-            new_img = draw_buety_detections(image, det)
+            new_img = draw_buety_detections_on_image(image, det)
             cv2.imshow("buety_image", new_img)
             cv2.waitKey(0)
             detections.extend(det)
@@ -129,87 +129,131 @@ def detect_nlpr_by_image(image):
 
 
 def detect_nlpr_by_video(video):
-    detections = []
+    detections = {}
     frame_num = -1              
     ret = True
-    while ret:
+    while video.isOpened():
         frame_num += 1
         ret, frame = video.read()
-        if ret == True:
-            print(frame_num)
-            det = recognition_lisence_plate(recognition_vehicles(image=frame))
-            if det:
-                detections.append({frame_num: det})
+        if not ret:
+            break
+        det = recognition_lisence_plate(recognition_vehicles(image=frame))
+        if det:
+            detections[frame_num] = det
     return detections
 
 
-def draw_buety_detections(image, detections):
+def draw_buety_detections_on_video(filename, video, detections):
+    video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+    avi_filename = filename.replace(".mp4", ".avi")
+    fourcc = cv2.VideoWriter_fourcc(*"XVID")
+    fps = video.get(cv2.CAP_PROP_FPS) or 25
+    w = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    out = cv2.VideoWriter(avi_filename, fourcc, fps, (w, h))
+    if not out.isOpened():
+        raise RuntimeError("VideoWriter не открылся")
+
+    frame_num = 0
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            break
+        frame = draw_buety_detections_on_image(frame, detections, str(frame_num))
+        out.write(frame)
+        frame_num += 1
+    out.release()
+    video.release()
+
+    # Конвертация через FFmpeg в H.264 mp4
+    mp4_path = filename
+    cmd = [
+        "ffmpeg",
+        "-y",  # перезаписать если есть
+        "-i", avi_filename,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",  # критично для браузеров
+        mp4_path
+    ]
+    subprocess.run(cmd, check=True)
+
+    # Удаляем временный AVI
+    os.remove(avi_filename)
+
+    return filename
+
+
+def draw_buety_detections_on_image(image, detections, frame='0'):
     # create copy of image
     img_copy = image.copy()
+
     
     # colors
     CAR_COLOR = (0, 255, 0)      # car
     LP_COLOR = (0, 0, 255)       # lp
     TEXT_COLOR = (255, 255, 255) # text
     TEXT_BG_COLOR = (0, 0, 0)    # text_back
-    for frame in detections["detections"]:
-        print(detections["detections"])
-        for car in detections["detections"][frame]:
-            print(car)
-            # car coords
-            car_x1, car_x2, car_y1, car_y2 = [int(coord) for coord in car["car_coords"]]
+
+    if frame not in detections["detections"]:
+        return image
+    
+    for car in detections["detections"][frame]:
+        # car coords
+        car_x1, car_x2, car_y1, car_y2 = [int(coord) for coord in car["car_coords"]]
+        
+        # car rectangle
+        cv2.rectangle(img_copy, 
+                    (car_x1, car_y1), 
+                    (car_x2, car_y2), 
+                    CAR_COLOR, 2)
+        
+        # lp coords
+        lp_x1, lp_x2, lp_y1, lp_y2 = [int(coord) for coord in car["lp_coords"]]
+        
+        # lp rectangle
+        cv2.rectangle(img_copy, 
+                    (lp_x1, lp_y1), 
+                    (lp_x2, lp_y2), 
+                    LP_COLOR, 3)
+        
+        # lp text
+        lp_text = car.get("lp_text", "")
+        
+        # add text above car's bounding box
+        if lp_text:
+            # text size for lp text
+            text_size = cv2.getTextSize(lp_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
             
-            # car rectangle
-            cv2.rectangle(img_copy, 
-                        (car_x1, car_y1), 
-                        (car_x2, car_y2), 
-                        CAR_COLOR, 2)
+
+            text_x = lp_x1
+            text_y = lp_y1 - 10 if lp_y1 - 10 > 10 else lp_y2 + 25
             
-            # lp coords
-            lp_x1, lp_x2, lp_y1, lp_y2 = [int(coord) for coord in car["lp_coords"]]
-            
-            # lp rectangle
-            cv2.rectangle(img_copy, 
-                        (lp_x1, lp_y1), 
-                        (lp_x2, lp_y2), 
-                        LP_COLOR, 3)
+            # draw background for lp text
+            cv2.rectangle(img_copy,
+                        (text_x, text_y - text_size[1] - 5),
+                        (text_x + text_size[0] + 10, text_y + 5),
+                        TEXT_BG_COLOR,
+                        -1)
             
             # lp text
-            lp_text = car.get("lp_text", "")
-            
-            # add text above car's bounding box
-            if lp_text:
-                # text size for lp text
-                text_size = cv2.getTextSize(lp_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-                
-
-                text_x = lp_x1
-                text_y = lp_y1 - 10 if lp_y1 - 10 > 10 else lp_y2 + 25
-                
-                # draw background for lp text
-                cv2.rectangle(img_copy,
-                            (text_x, text_y - text_size[1] - 5),
-                            (text_x + text_size[0] + 10, text_y + 5),
-                            TEXT_BG_COLOR,
-                            -1)
-                
-                # lp text
-                cv2.putText(img_copy,
-                        lp_text,
-                        (text_x + 5, text_y),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        TEXT_COLOR,
-                        2)
-            
-            # add "Car" label
             cv2.putText(img_copy,
-                    "Car",
-                    (car_x1, car_y1 - 10 if car_y1 - 10 > 10 else car_y1 + 20),
+                    lp_text,
+                    (text_x + 5, text_y),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    CAR_COLOR,
+                    0.7,
+                    TEXT_COLOR,
                     2)
+        
+        # add "Car" label
+        cv2.putText(img_copy,
+                "Car",
+                (car_x1, car_y1 - 10 if car_y1 - 10 > 10 else car_y1 + 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                CAR_COLOR,
+                2)
             
     return img_copy
 
@@ -217,16 +261,17 @@ def draw_buety_detections(image, detections):
 def main():
     # Path to the images folder
     clear_folder()
-    category_img = "images"
-    images_folder = f"{HOME}/{category_img}"
-    detections = {"detections": detect_lisence_plates_in_folder(images_folder=images_folder)}
-    print(*detections, sep="\n")
+    # category_img = "videos"
+    # images_folder = f"{HOME}/{category_img}"
+    # detections = {"detections": detect_lisence_plates_in_folder(images_folder=images_folder)}
+    # print(detections, sep="\n")
+    # print(len(detections["detections"]))
 
-    # image = cv2.imread("images/image0.png")
-    # det = detect_nlpr_by_image(image)
-    # print(det[0]["carcoords"])
-    # print(det[0]["lp_coords"])
-    # draw_rectangle(image=image, xy=det[0]["lp_coords"])
+    video = cv2.VideoCapture("videos/car1.mp4")
+    det = {"detections": detect_nlpr_by_video(video)}
+    video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    new_video = draw_buety_detections_on_video("car.mp4", video=video, detections=det)
+    
 
 
 if __name__ == "__main__":
