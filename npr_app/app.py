@@ -3,7 +3,6 @@ import streamlit as st
 import json
 from io import BytesIO
 from PIL import Image
-import tempfile
 
 
 st.set_page_config(page_title="Number Plates Recognition", page_icon="favicon.ico")
@@ -32,7 +31,7 @@ if uploaded_file is not None:
                 with col2:
                     st.image(img)
             elif uploaded_file.type in ("video/mp4",):
-                    video_bytes = image_response.content  # ← ВАЖНО
+                    video_bytes = image_response.content 
 
                     with col1:
                         st.video(uploaded_file)
