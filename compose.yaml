@@ -1,20 +1,22 @@
 services:
   npr_main:
     build: ./npr_main
+    image: npr_backend
     container_name: npr_main
+    networks:
+      - npr_net
     ports:
       - "8000:8000"
-    volumes:
-      - ./NPR_Main:/app
-    restart: unless-stopped
-
   npr_app:
-    build: ./npr_app
+    build: ./npr_app 
+    image: npr_front
     container_name: npr_app
+    networks:
+      - npr_net
     ports:
       - "8501:8501"
-    volumes:
-      - ./NPR_app:/app
     depends_on:
       - npr_main
-    restart: unless-stopped
+
+networks:
+  npr_net
