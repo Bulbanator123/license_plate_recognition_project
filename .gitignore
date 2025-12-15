@@ -230,7 +230,7 @@ runs/
 kagglehub
 
 # prev models
-model/prev
+npr_main/model/prev
 
 # trash func
 trash.py

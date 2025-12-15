@@ -1,0 +1,22 @@
+services:
+  npr_main:
+    build: ./npr_main
+    image: npr_backend
+    container_name: npr_main
+    networks:
+      - npr_net
+    ports:
+      - "8000:8000"
+  npr_app:
+    build: ./npr_app 
+    image: npr_front
+    container_name: npr_app
+    networks:
+      - npr_net
+    ports:
+      - "8501:8501"
+    depends_on:
+      - npr_main
+
+networks:
+  npr_net
