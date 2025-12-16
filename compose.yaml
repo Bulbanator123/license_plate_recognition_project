@@ -19,4 +19,5 @@ services:
       - npr_main
 
 networks:
-  npr_net
+  npr_net:
+    driver: bridge
