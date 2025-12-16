@@ -1,0 +1,8 @@
+__pycache__/
+*.pth
+*.onnx
+.git
+.cache/
+.weights/
+datasets/
+runs/

@@ -14,14 +14,14 @@ if uploaded_file is not None:
     if st.button("Отправить"):
         col1, col2 = st.columns(2)
         files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-        det_response = requests.post("http://127.0.0.1:8000/nplr", files=files)
+        det_response = requests.post("http://npr_main:8000/nplr", files=files)
         st.write(det_response.json())
         if det_response.status_code == 200:
             st.success("Файл успешно отправлен!")
         else:
             st.error(f"Ошибка: {det_response.json()}")
         data = det_response.json()
-        image_response = requests.post("http://127.0.0.1:8000/nplr/image", data={"data": json.dumps(data)}, files=files)
+        image_response = requests.post("http://npr_main:8000/nplr/image", data={"data": json.dumps(data)}, files=files)
         print(image_response)
         if image_response.status_code == 200:
             if uploaded_file.type in ("image/png", "image/jpeg"):
