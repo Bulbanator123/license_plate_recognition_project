@@ -1,14 +1,22 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /npr_main
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN rm -rf /usr/local/cuda* \
-    /usr/lib/x86_64-linux-gnu/libcuda* \
-    /usr/lib/x86_64-linux-gnu/libnvidia*
 
 COPY . .
 

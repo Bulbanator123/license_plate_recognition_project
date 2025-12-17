@@ -3,6 +3,10 @@ import cv2
 from fast_plate_ocr import LicensePlateRecognizer
 import os
 import subprocess
+import logging
+
+logging.getLogger("ultralytics").setLevel(logging.ERROR)
+
 
 HOME = "/".join(__file__.split("/")[:-1])
 model_lisence_plates = YOLO(f'{HOME}/model/yolo_lisence_plate.pt')
