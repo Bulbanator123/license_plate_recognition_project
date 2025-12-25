@@ -1,6 +1,7 @@
-from ultralytics import YOLO
 import cv2
 from fast_plate_ocr import LicensePlateRecognizer
+import onnxruntime as ort
+from onnx_utils import run_onnx
 import os
 import subprocess
 import logging
@@ -9,19 +10,16 @@ logging.getLogger("ultralytics").setLevel(logging.ERROR)
 
 
 HOME = "/".join(__file__.split("/")[:-1])
-model_lisence_plates = YOLO(f'{HOME}/model/yolo_lisence_plate.pt')
-model_vehicle = YOLO(f'{HOME}/model/yolov8m.pt')
+STRIDE = 32
+INPUT_SIZE = 640
+model_lisence_plates = ort.InferenceSession(f'{HOME}/model/yolo_lisence_plate.onnx', providers=["CPUExecutionProvider"])
+model_vehicle = ort.InferenceSession(f'{HOME}/model/yolov8m.onnx', providers=["CPUExecutionProvider"])
 vehicles = [2, 3, 5, 7]
 
 reader = LicensePlateRecognizer("cct-xs-v1-global-model")
 
 category_img = "images"
 category_save = "saves"
-
-
-def post_proccesing_image(image):
-    thresh = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return thresh
 
 
 def get_free_filename():
@@ -53,12 +51,13 @@ def clear_folder():
 def recognition_vehicles(image):
     crop_vehicle_images = []
     # Run the YOLO model on the current image
-    results_vehicles = model_vehicle(image)[0]
-
-    for detection in results_vehicles.boxes.data.tolist():
-        carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
-
-        if int(cls_cars) in vehicles and conf >= 0.70:
+    results_vehicles = run_onnx(model_vehicle, image)
+    print(results_vehicles)
+    for detection in results_vehicles:
+        carx1, cary1, carx2, cary2 = detection[:4]
+        conf, cls_cars = detection[4:]
+        print(cls_cars)
+        if int(cls_cars) in vehicles and conf > 0.70:
             crop_vehicle_images.append([image[int(cary1):int(cary2), 
                                               int(carx1):int(carx2)], 
                                               (carx1, cary1, carx2, cary2)])
@@ -76,10 +75,11 @@ def recognition_lisence_plate(data: list):
     detections = []
     for vehicle_crop_img, carcoords in data:
         # Run the YOLO model on the current vehicle image
-        results_lisence = model_lisence_plates(vehicle_crop_img)[0]
+        results_lisence = run_onnx(model_lisence_plates, vehicle_crop_img)
         
-        for lisence in results_lisence.boxes.data.tolist():
-            x1, y1, x2, y2, conf = lisence[:5]
+        for detection in results_lisence:
+            x1, y1, x2, y2 = detection[:4]
+            conf = detection[4]
 
             if conf < 0.70:
                 continue
@@ -265,21 +265,12 @@ def draw_buety_detections_on_image(image, detections, frame='0'):
 
 
 def main():
-    # Path to the images folder
-    # clear_folder()
-    # category_img = "videos"
-    # images_folder = f"{HOME}/{category_img}"
-    # detections = {"detections": detect_lisence_plates_in_folder(images_folder=images_folder)}
-    # print(detections, sep="\n")
-    # print(len(detections["detections"]))
-    print(HOME)
     video = cv2.VideoCapture(f"{HOME}/../videos/car1.mp4")
     det = {"detections": detect_nlpr_by_video(video)}
-    # print(det)
+    print(det)
     video.set(cv2.CAP_PROP_POS_FRAMES, 0)
     draw_buety_detections_on_video("saves/car2.mp4", video=video, detections=det)
     
-
 
 if __name__ == "__main__":
     main()

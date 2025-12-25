@@ -2,7 +2,7 @@ fastapi==0.124.2
 uvicorn[standart]==0.38.0
 
 fast-plate-ocr[onnx]==1.0.2
-ultralytics==8.3.213
+onnxruntime==1.23.2
 opencv-python-headless==4.12.0.88
 numpy==2.2.6
 Pillow==12.0.0
