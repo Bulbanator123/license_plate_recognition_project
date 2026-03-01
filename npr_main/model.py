@@ -1,9 +1,11 @@
+# импорты
 from ultralytics import YOLO
 import cv2
 from fast_plate_ocr import LicensePlateRecognizer
 import os
 import subprocess
 
+# Константы
 HOME = "/".join(__file__.split("/")[:-1])
 model_lisence_plates = YOLO(f'{HOME}/model/yolo_lisence_plate.pt')
 model_vehicle = YOLO(f'{HOME}/model/yolov8m.pt')
@@ -14,12 +16,11 @@ reader = LicensePlateRecognizer("cct-xs-v1-global-model")
 category_img = "images"
 category_save = "saves"
 
-
-def post_proccesing_image(image):
-    thresh = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return thresh
+validator_transport = 0.70
+validator_ocr = 0.70
 
 
+# Функция для получения свободного имени файла в папке
 def get_free_filename():
     i = 1
     while i < 1000000000:
@@ -31,47 +32,57 @@ def get_free_filename():
             return filename
 
         i += 1
+
     raise Exception("DataBase is overfilled")
 
 
-def save_lp(image):
+# Функция для сохранения картинки
+def save_lisence_plate(image):
     filename = get_free_filename()
     cv2.imwrite(f"{category_save}/{filename}", image)
 
 
+# Функция для очистки папки saves
 def clear_folder():
-    all_items = os.listdir(category_save)
-    for path in all_items:
-        file_to_delete = os.path.join(category_save, path)
+    all_paths_files_in_folder = os.listdir(category_save)
+
+    for file_path in all_paths_files_in_folder:
+        file_to_delete = os.path.join(category_save, file_path)
         os.remove(file_to_delete)
 
 
+# Функция для распознования транспорта
 def recognition_vehicles(image):
     crop_vehicle_images = []
-    # Run the YOLO model on the current image
     results_vehicles = model_vehicle(image)[0]
 
     for detection in results_vehicles.boxes.data.tolist():
         carx1, cary1, carx2, cary2, conf, cls_cars = detection[:6]
 
-        if int(cls_cars) in vehicles and conf >= 0.70:
+        if int(cls_cars) in vehicles and conf >= validator_transport:
             crop_vehicle_images.append([image[int(cary1):int(cary2), 
                                               int(carx1):int(carx2)], 
                                               (carx1, cary1, carx2, cary2)])
     return crop_vehicle_images
 
 
+# Функция для распознования текста
 def ocr_detections(lisence_crop_img):
     lisence_detection, score = reader.run(lisence_crop_img, return_confidence=True)
-    if sum(score[0]) / len(score[0]) > 0.70:
+    if sum(score[0]) / len(score[0]) > validator_ocr:
         return lisence_detection
     return None
 
 
+# Общая функция для распознования номерных знаков: транспорт + номерные знаки + текст
+# формат вывода массив с словарями:
+#   ключи:
+#   lp_text - номер номерного знака
+#   lp_coords - координаты номерного знака
+#   car_coords - координаты машины
 def recognition_lisence_plate(data: list):
     detections = []
     for vehicle_crop_img, carcoords in data:
-        # Run the YOLO model on the current vehicle image
         results_lisence = model_lisence_plates(vehicle_crop_img)[0]
         
         for lisence in results_lisence.boxes.data.tolist():
@@ -80,8 +91,7 @@ def recognition_lisence_plate(data: list):
             if conf < 0.70:
                 continue
             lisence_crop_img = vehicle_crop_img[int(y1):int(y2), int(x1):int(x2)]
-            # lisence_crop_img = post_proccesing_image(lisence_crop_img)
-            # Now apply the OCR on the processed image
+
             det_text = ocr_detections(lisence_crop_img)
             if det_text is not None:
                 detections.append(
@@ -95,6 +105,7 @@ def recognition_lisence_plate(data: list):
     return detections
 
 
+# функция для распознавания всех изображений и видео в папке
 def detect_lisence_plates_in_folder(images_folder):
     detections = []
 
@@ -106,7 +117,6 @@ def detect_lisence_plates_in_folder(images_folder):
 
         if file_name.endswith((".png", ".jpg", ".jpeg")):
             
-            # Check images that we get
             image = cv2.imread(file_path)
             det = [detect_nlpr_by_image(image)]
             new_img = draw_buety_detections_on_image(image, det)
@@ -116,18 +126,19 @@ def detect_lisence_plates_in_folder(images_folder):
 
         if file_name.endswith((".mp4", ".mov", ".avi", ".webm", ".giff")):
             
-            # Check videos that we get
             cap = cv2.VideoCapture(file_path)
             detections.extend(detect_nlpr_by_video(cap))
                 
     return detections
 
 
+# функция для распознавания изображения
 def detect_nlpr_by_image(image):
     detections = {0: recognition_lisence_plate(recognition_vehicles(image=image))}
     return detections
 
 
+# функция для распознавания видео
 def detect_nlpr_by_video(video):
     detections = {}
     frame_num = -1              
@@ -143,6 +154,7 @@ def detect_nlpr_by_video(video):
     return detections
 
 
+# функция для наложения детекций на видео
 def draw_buety_detections_on_video(filename, video, detections):
     video.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -168,7 +180,7 @@ def draw_buety_detections_on_video(filename, video, detections):
     out.release()
     video.release()
 
-    # convert FFmpeg in H.264 mp4
+    # преобразуем к кодеку
     mp4_path = filename
     cmd = [
         "ffmpeg",
@@ -184,15 +196,14 @@ def draw_buety_detections_on_video(filename, video, detections):
     return filename
 
 
+# функция для создания красивой обводки для изображения
 def draw_buety_detections_on_image(image, detections, frame='0'):
-    # create copy of image
     img_copy = image.copy()
 
-    # colors
-    CAR_COLOR = (0, 255, 0)      # car
-    LP_COLOR = (0, 0, 255)       # lp
-    TEXT_COLOR = (255, 255, 255) # text
-    TEXT_BG_COLOR = (0, 0, 0)    # text_back
+    CAR_COLOR = (0, 255, 0)
+    LP_COLOR = (0, 0, 255)
+    TEXT_COLOR = (255, 255, 255)
+    TEXT_BG_COLOR = (0, 0, 0)
     if str(frame) not in detections["detections"] and int(frame) not in detections["detections"]:
         return image
     
@@ -202,44 +213,35 @@ def draw_buety_detections_on_image(image, detections, frame='0'):
         frame = int(frame)
 
     for car in detections["detections"][frame]:
-        # car coords
         car_x1, car_x2, car_y1, car_y2 = [int(coord) for coord in car["car_coords"]]
         
-        # car rectangle
         cv2.rectangle(img_copy, 
                     (car_x1, car_y1), 
                     (car_x2, car_y2), 
                     CAR_COLOR, 2)
         
-        # lp coords
         lp_x1, lp_x2, lp_y1, lp_y2 = [int(coord) for coord in car["lp_coords"]]
         
-        # lp rectangle
         cv2.rectangle(img_copy, 
                     (lp_x1, lp_y1), 
                     (lp_x2, lp_y2), 
                     LP_COLOR, 3)
         
-        # lp text
         lp_text = car.get("lp_text", "")
         
-        # add text above car's bounding box
         if lp_text:
-            # text size for lp text
             text_size = cv2.getTextSize(lp_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
             
 
             text_x = lp_x1
             text_y = lp_y1 - 10 if lp_y1 - 10 > 10 else lp_y2 + 25
             
-            # draw background for lp text
             cv2.rectangle(img_copy,
                         (text_x, text_y - text_size[1] - 5),
                         (text_x + text_size[0] + 10, text_y + 5),
                         TEXT_BG_COLOR,
                         -1)
             
-            # lp text
             cv2.putText(img_copy,
                     lp_text,
                     (text_x + 5, text_y),
@@ -248,7 +250,6 @@ def draw_buety_detections_on_image(image, detections, frame='0'):
                     TEXT_COLOR,
                     2)
         
-        # add "Car" label
         cv2.putText(img_copy,
                 "Car",
                 (car_x1, car_y1 - 10 if car_y1 - 10 > 10 else car_y1 + 20),
@@ -259,6 +260,11 @@ def draw_buety_detections_on_image(image, detections, frame='0'):
             
     return img_copy
 
+# ------------------------------------------
+# тестовая область 
+#       |
+#       V
+# ------------------------------------------
 
 def main():
     # Path to the images folder
