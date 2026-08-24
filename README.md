@@ -50,7 +50,7 @@
 
 ## 🛠 Установка проекта
 ```
-git clone https://github.com/Bulbanator123/license_plate_recognition_project
+git clone https://github.com/pivoslavik/license_plate_recognition_project
 cd license_plate_recognition_project
 ```
 ## 🚀 Запуск проекта
